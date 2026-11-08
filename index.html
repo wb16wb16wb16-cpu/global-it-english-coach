@@ -23,7 +23,31 @@ const minsToday=()=>state.minutes[TODAY()]||0;const countDone=()=>Object.keys(st
 const allModules=()=>[...modules,...(state.custom||[])];
 const nextLesson=()=>allModules().find(x=>!state.done[x.id])||modules[0];
 function track(m){state.minutes[TODAY()]=(state.minutes[TODAY()]||0)+m;save();render()}
-function speak(s){if(!('speechSynthesis' in window)){alert('この端末では読み上げを利用できません');return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(s);u.lang='en-US';u.rate=.86;speechSynthesis.speak(u)}
+let currentUtterance=null;
+function audioStatus(message){
+  let el=document.getElementById('audioStatus');
+  if(!el){el=document.createElement('div');el.id='audioStatus';el.setAttribute('role','status');el.style.cssText='position:fixed;bottom:85px;left:12px;right:12px;max-width:536px;margin:auto;background:#102c45;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;z-index:999;box-shadow:0 2px 12px #0003';document.body.appendChild(el)}
+  el.textContent=message;
+}
+function speak(s){
+  if(!window.speechSynthesis||!window.SpeechSynthesisUtterance){audioStatus('この環境では音声読み上げを利用できません。Safariで公開URLを開いてお試しください。');return}
+  const synth=window.speechSynthesis;
+  try{
+    synth.cancel();
+    const u=new SpeechSynthesisUtterance(s);
+    currentUtterance=u; // iOS Safari: keep a strong reference until speech ends
+    u.lang='en-US';u.rate=0.85;u.pitch=1;u.volume=1;
+    const voices=synth.getVoices();
+    const voice=voices.find(v=>v.lang.toLowerCase()==='en-us'&&v.localService)||voices.find(v=>v.lang.toLowerCase()==='en-us')||voices.find(v=>v.lang.toLowerCase().startsWith('en'));
+    if(voice)u.voice=voice;
+    u.onstart=()=>audioStatus('🔊 読み上げ中…');
+    u.onend=()=>{currentUtterance=null;audioStatus('✓ 読み上げが完了しました')};
+    u.onerror=e=>{currentUtterance=null;audioStatus('音声を再生できませんでした（'+e.error+'）。iPhoneの音量・音声設定をご確認ください。')};
+    audioStatus('🔊 音声を準備しています…');
+    synth.speak(u); // must be invoked synchronously inside the tap handler
+    if(synth.paused)synth.resume();
+  }catch(e){audioStatus('音声エラー: '+e.message)}
+}
 const titles={home:'今日の学習',learn:'教材',practice:'AI英会話',review:'復習',stats:'学習分析'};
 function navigate(t){tab=t;activeLesson=null;quizAnswer=null;quizFinished=false;render();window.scrollTo(0,0)}
 function render(){document.getElementById('pageTitle').textContent=titles[tab];document.getElementById('tabs').innerHTML=[['home','⌂','ホーム'],['learn','▤','教材'],['practice','◉','会話'],['review','↻','復習'],['stats','▥','分析']].map(([id,ic,name])=>`<button class="tab ${tab===id?'active':''}" data-tab="${id}"><span>${ic}</span>${name}</button>`).join('');document.getElementById('main').innerHTML=({home:home,learn:learn,practice:practice,review:review,stats:stats})[tab]();}
